@@ -1,6 +1,189 @@
-<html>
-    <body>
-        <div style="left:0; width:100%; height:0; position:relative; padding-bottom:40%; margin:0 auto"><iframe src="https://www.tickcounter.com/widget/countdown/10501439" style="top:0; left:0; width:100%; height:100%; position:absolute; border:0; overflow:hidden" title="d"></iframe></div>
-        <div style="left:0; width:100%; height:0; position:relative; padding-bottom:25%; margin:0 auto"><iframe src="https://www.tickcounter.com/widget/countdown/10501476" style="top:0; left:0; width:100%; height:30%; position:absolute; border:0; overflow:hidden" title="d"></iframe></div>
-    </body>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Countdown</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Pacifico', cursive;
+            background:
+                linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.45)),
+                url("18.02.2026%20unlimited_slider_ge.jpg") center center / cover no-repeat fixed;
+            background-color: #000;
+            color: #f5f7fa;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0 4vw;
+        }
+
+        .timer { text-align: center; width: 100%; }
+
+        .label {
+            letter-spacing: 0.18em;
+            color: #cdd9ee;
+            text-shadow: 0 2px 12px rgba(0,0,0,0.9);
+        }
+
+        /* fixed-width digit cells -> clock never shifts horizontally */
+        .value { white-space: nowrap; }
+        .value .cell {
+            display: inline-block;
+            width: 0.72em;
+            text-align: center;
+        }
+        .value .cell.sep   { width: 0.34em; }
+        .value .cell.space { width: 0.32em; }
+
+        /* Big timer — fills ~80% of the screen height */
+        .big {
+            flex: 4 1 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .big .label { font-size: clamp(1rem, 2.6vw, 1.8rem); margin-bottom: 2.5vh; }
+        .big .value {
+            font-size: min(11vw, 22vh);
+            line-height: 1.1;
+            color: #ffffff;
+            text-shadow: 0 4px 26px rgba(0,0,0,0.85), 0 0 6px rgba(0,0,0,0.7);
+        }
+        .big .units {
+            margin-top: 2.5vh;
+            font-size: clamp(0.9rem, 2.4vw, 1.5rem);
+            color: #bcd0f0;
+            letter-spacing: 0.1em;
+            text-shadow: 0 2px 12px rgba(0,0,0,0.9);
+        }
+
+        /* Small timer — shares the remaining ~20% */
+        .small {
+            flex: 1 1 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.12);
+            padding-top: 2vh;
+            max-width: 640px;
+        }
+        .small .label { font-size: clamp(0.7rem, 1.6vw, 1rem); margin-bottom: 1vh; }
+        .small .value {
+            font-size: clamp(1.6rem, 5vw, 3rem);
+            color: #dbe7ff;
+            text-shadow: 0 3px 16px rgba(0,0,0,0.85);
+        }
+        .small .sub {
+            margin-top: 1vh;
+            font-size: clamp(0.65rem, 1.4vw, 0.9rem);
+            color: #b6c6e2;
+            text-shadow: 0 2px 12px rgba(0,0,0,0.9);
+        }
+
+        .done { color: #7df0b0 !important; }
+    </style>
+</head>
+<body>
+    <div class="timer big">
+        <div class="label">Fight Countdown</div>
+        <div class="value" id="bigValue">—</div>
+        <div class="units" id="bigUnits"></div>
+    </div>
+
+    <div class="timer small">
+        <div class="label">Until end of work</div>
+        <div class="value" id="smallValue">—</div>
+        <div class="sub" id="smallSub"></div>
+    </div>
+
+    <script>
+        // ---- Big timer: next 20 September ----
+        function nextSeptember20(now) {
+            const year = now.getFullYear();
+            let target = new Date(year, 8, 20, 0, 0, 0); // month 8 = September
+            if (target <= now) target = new Date(year + 1, 8, 20, 0, 0, 0);
+            return target;
+        }
+
+        // ---- Small timer: end of work day (18:30, Friday 17:30) ----
+        // Counts down to today's end of work. Once past it (or on a weekend),
+        // shows "Work day over" until the next day.
+        function todayEndOfWork(now) {
+            const day = now.getDay(); // 0 = Sun, 6 = Sat
+            if (day === 0 || day === 6) return null; // weekend
+            const isFriday = day === 5;
+            const end = new Date(now);
+            end.setHours(isFriday ? 17 : 18, 30, 0, 0);
+            return now < end ? end : null; // null once the work day is over
+        }
+
+        function diff(target, now) {
+            let ms = target - now;
+            if (ms < 0) ms = 0;
+            const total = Math.floor(ms / 1000);
+            return {
+                days: Math.floor(total / 86400),
+                hours: Math.floor((total % 86400) / 3600),
+                minutes: Math.floor((total % 3600) / 60),
+                seconds: total % 60,
+                ms: ms
+            };
+        }
+
+        const pad = n => String(n).padStart(2, '0');
+
+        // Render a string into fixed-width cells so the line never reflows.
+        function setCells(el, str) {
+            let html = '';
+            for (const ch of str) {
+                if (ch === ':') html += '<span class="cell sep">:</span>';
+                else if (ch === ' ') html += '<span class="cell space"></span>';
+                else html += '<span class="cell">' + ch + '</span>';
+            }
+            el.innerHTML = html;
+        }
+
+        function render() {
+            const now = new Date();
+
+            // Big
+            const b = diff(nextSeptember20(now), now);
+            setCells(document.getElementById('bigValue'),
+                b.days + ':' + pad(b.hours) + ':' + pad(b.minutes));
+            document.getElementById('bigUnits').textContent =
+                b.days + (b.days === 1 ? ' day to go' : ' days to go');
+
+            // Small
+            const smallEl = document.getElementById('smallValue');
+            const smallTarget = todayEndOfWork(now);
+            if (smallTarget) {
+                const s = diff(smallTarget, now);
+                setCells(smallEl, pad(s.hours) + ':' + pad(s.minutes) + ':' + pad(s.seconds));
+                const endLabel = pad(smallTarget.getHours()) + ':' + pad(smallTarget.getMinutes());
+                document.getElementById('smallSub').textContent = 'Ends today at ' + endLabel;
+                smallEl.classList.remove('done');
+            } else {
+                smallEl.textContent = 'Work day over';
+                document.getElementById('smallSub').textContent = '';
+                smallEl.classList.add('done');
+            }
+        }
+
+        render();
+        setInterval(render, 1000);
+    </script>
+</body>
 </html>
