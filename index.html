@@ -94,6 +94,25 @@
         }
 
         .done { color: #7df0b0 !important; }
+
+        /* Daily scheduled video overlay (09:59) */
+        .video-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.92);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .video-overlay.show { display: flex; }
+        .video-overlay iframe {
+            width: min(90vw, 160vh);
+            height: auto;
+            aspect-ratio: 16 / 9;
+            border: 0;
+            box-shadow: 0 10px 60px rgba(0, 0, 0, 0.8);
+        }
     </style>
 </head>
 <body>
@@ -107,6 +126,10 @@
         <div class="label">Until end of work</div>
         <div class="value" id="smallValue">—</div>
         <div class="sub" id="smallSub"></div>
+    </div>
+
+    <div class="video-overlay" id="videoOverlay">
+        <div id="ytPlayer"></div>
     </div>
 
     <script>
@@ -156,8 +179,81 @@
             el.innerHTML = html;
         }
 
+        // ---- Daily scheduled video: 09:59 every morning ----
+        const SCHEDULE_HOUR = 9;
+        const SCHEDULE_MINUTE = 59;
+        const VIDEO_ID = '7ZfFk0OHTjM';
+        const MAX_PLAY_MS = 30 * 60 * 1000; // hard cap: always close within 30 min, even if the video stalls
+        let lastPlayedDate = null;
+        let ytPlayer = null;
+        let ytApiReady = false;
+        let closeTimer = null;
+
+        // Load the YouTube IFrame Player API (lets us detect when the video ends).
+        (function loadYouTubeApi() {
+            const tag = document.createElement('script');
+            tag.src = 'https://www.youtube.com/iframe_api';
+            document.head.appendChild(tag);
+        })();
+
+        // The IFrame API calls this automatically once it has loaded.
+        window.onYouTubeIframeAPIReady = function () { ytApiReady = true; };
+
+        function openVideo() {
+            if (!ytApiReady || typeof YT === 'undefined' || !YT.Player) {
+                setTimeout(openVideo, 500); // API still loading — retry shortly
+                return;
+            }
+            document.getElementById('videoOverlay').classList.add('show');
+            ytPlayer = new YT.Player('ytPlayer', {
+                videoId: VIDEO_ID,
+                playerVars: { autoplay: 1, rel: 0, playsinline: 1 },
+                events: {
+                    onReady: function (e) {
+                        e.target.playVideo();
+                        // Auto-close after the video's own length (capped), so the TV
+                        // returns to the clock unattended even if ENDED never fires.
+                        const durMs = (e.target.getDuration() || 0) * 1000;
+                        const closeAfter = durMs > 0 ? Math.min(durMs + 5000, MAX_PLAY_MS) : MAX_PLAY_MS;
+                        closeTimer = setTimeout(closeVideo, closeAfter);
+                    },
+                    onStateChange: function (e) {
+                        if (e.data === YT.PlayerState.ENDED) closeVideo();
+                    }
+                }
+            });
+        }
+
+        function closeVideo() {
+            if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+            const overlay = document.getElementById('videoOverlay');
+            overlay.classList.remove('show');
+            if (ytPlayer && ytPlayer.destroy) {
+                ytPlayer.destroy(); // stop playback and remove the iframe
+                ytPlayer = null;
+            }
+            // Recreate the placeholder element for the next day (destroy removed it).
+            if (!document.getElementById('ytPlayer')) {
+                const div = document.createElement('div');
+                div.id = 'ytPlayer';
+                overlay.appendChild(div);
+            }
+        }
+
+        function checkSchedule(now) {
+            const today = now.toDateString();
+            if (now.getHours() === SCHEDULE_HOUR &&
+                now.getMinutes() === SCHEDULE_MINUTE &&
+                lastPlayedDate !== today) {
+                lastPlayedDate = today;
+                openVideo();
+            }
+        }
+
         function render() {
             const now = new Date();
+
+            checkSchedule(now);
 
             // Big
             const b = diff(nextSeptember20(now), now);
